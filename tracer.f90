@@ -13,12 +13,17 @@ subroutine trace(x_initial, y_initial, z_initial, &
                  n_output_points,                 &
                  x_out, y_out, z_out,             &
                  aux_out,                         &
-                 fieldline_length)
+                 fieldline_length,                &
+                 decoupling_index)
 
-    use tracer_params_mod, only : nonuniform_output, &
+    use tracer_params_mod, only : direction,         &
+                                  nonuniform_output, &
+                                  decoupling_rate,   &
+                                  slope_correction,  &
                                   max_output_points, &
                                   ds_out,            &
-                                  n_aux
+                                  n_aux,             &
+                                  z_max
 
     use tracer_base_mod, only : initialize_tracer, &
                                 adjust_stepsize,   &
@@ -31,12 +36,15 @@ subroutine trace(x_initial, y_initial, z_initial, &
                             get_interpolated_position, &
                             update_directions
 
+    use mesh_mod, only : zm, u_l
+
     real(SP), intent(in) :: x_initial, y_initial, z_initial
 
     integer,               intent(out) :: n_output_points
     real(SP), allocatable, intent(out) :: x_out(:), y_out(:), z_out(:)
     real(SP), allocatable, intent(out) :: aux_out(:, :)
     real(SP),              intent(out) :: fieldline_length
+    integer,               intent(out) :: decoupling_index
 
     real(SP) :: s_current
     real(SP) :: s_old
@@ -55,20 +63,28 @@ subroutine trace(x_initial, y_initial, z_initial, &
 
     real(SP) :: dx_ds_initial, dy_ds_initial, dz_ds_initial
 
+    logical  :: decoupled
+    real(SP) :: s_first_decoupling
+    real(SP) :: B_weight, z_weight
+
+    integer  :: n_extension_points
+
     real(SP), allocatable :: out_temp(:)
     real(SP), allocatable :: out_aux_temp(:, :)
 
     integer  :: n
     real(SP) :: s_out
     integer  :: x_idx_out, y_idx_out, z_idx_out
-    logical  :: terminate
+    logical  :: terminated
     logical  :: accepted
+
+    decoupling_index = -1
 
     ! ************************ Allocate output arrays ************************
 
-    if (allocated(x_out))    deallocate(x_out)
-    if (allocated(y_out))    deallocate(y_out)
-    if (allocated(z_out))    deallocate(z_out)
+    if (allocated(x_out))   deallocate(x_out)
+    if (allocated(y_out))   deallocate(y_out)
+    if (allocated(z_out))   deallocate(z_out)
     if (allocated(aux_out)) deallocate(aux_out)
 
     allocate(x_out(max_output_points), &
@@ -96,15 +112,21 @@ subroutine trace(x_initial, y_initial, z_initial, &
 
     call compute_aux_output(x_out(1), y_out(1), z_out(1),    &
                             x_idx_old, y_idx_old, z_idx_old, &
+                            0.0,                             &
                             aux_out(1, :),                   &
-                            terminate)
+                            terminated)
 
     ! *************************** Perform stepping ***************************
 
     n = 2
     s_out = ds_out
     accepted = .true.
-    terminate = .false.
+    terminated = .false.
+
+    s_first_decoupling = -1.0
+    B_weight = direction
+    z_weight = 0.0
+    decoupled = .false.
 
     tracing: do
 
@@ -114,12 +136,13 @@ subroutine trace(x_initial, y_initial, z_initial, &
             call step(x_old, y_old, z_old,                         &
                       x_idx_old, y_idx_old, z_idx_old,             &
                       ds_current,                                  &
+                      B_weight, z_weight,                          &
                       x_current, y_current, z_current,             &
                       x_idx_current, y_idx_current, z_idx_current, &
-                      terminate)
+                      terminated)
 
             ! Stop if we hit a non-periodic boundary
-            if (terminate) then
+            if (terminated) then
                 n_output_points = n - 1
                 fieldline_length = s_old
                 exit tracing
@@ -161,14 +184,30 @@ subroutine trace(x_initial, y_initial, z_initial, &
             ! Get auxiliary output
             call compute_aux_output(x_out(n), y_out(n), z_out(n),    &
                                     x_idx_out, y_idx_out, z_idx_out, &
+                                    z_weight,                        &
                                     aux_out(n, :),                   &
-                                    terminate)
+                                    decoupled)
 
-            ! Exit if the stopping condition for the output was met
-            if (terminate) then
-                n_output_points = n
-                fieldline_length = s_current
-                exit tracing
+            ! Adjust weights for smooth decoupling transition
+            if (decoupled) then
+
+                if (s_first_decoupling < 0.0) then
+                    s_first_decoupling = s_current
+                    decoupling_index = n
+                end if
+
+                z_weight = (s_current - s_first_decoupling)*decoupling_rate
+                B_weight = direction*(1 - z_weight)
+
+                ! Terminate when the direction is straight down
+                if (z_weight >= 1.0) then
+
+                    n_output_points = n
+                    fieldline_length = s_current
+                    exit tracing
+
+                end if
+
             end if
 
             ! Increment number of output values
@@ -178,6 +217,7 @@ subroutine trace(x_initial, y_initial, z_initial, &
             if (n > max_output_points) then
                 n_output_points = max_output_points
                 fieldline_length = s_current
+                terminated = .true.
                 exit tracing
             end if
 
@@ -204,14 +244,30 @@ subroutine trace(x_initial, y_initial, z_initial, &
                 ! Get auxiliary output
                 call compute_aux_output(x_out(n), y_out(n), z_out(n),    &
                                         x_idx_out, y_idx_out, z_idx_out, &
+                                        z_weight,                        &
                                         aux_out(n, :),                   &
-                                        terminate)
+                                        decoupled)
 
-                ! Exit if the stopping condition for the output was met
-                if (terminate) then
-                    n_output_points = n
-                    fieldline_length = s_out
-                    exit tracing
+                ! Adjust weights for smooth decoupling transition
+                if (decoupled) then
+
+                    if (s_first_decoupling < 0.0) then
+                        s_first_decoupling = s_out
+                        decoupling_index = n
+                    end if
+
+                    z_weight = (s_out - s_first_decoupling)*decoupling_rate
+                    B_weight = direction*(1 - z_weight)
+
+                    ! Terminate when the direction is straight down
+                    if (z_weight >= 1.0) then
+
+                        n_output_points = n
+                        fieldline_length = s_out
+                        exit tracing
+
+                    end if
+
                 end if
 
                 ! Increment number of output values
@@ -221,6 +277,7 @@ subroutine trace(x_initial, y_initial, z_initial, &
                 if (n > max_output_points) then
                     n_output_points = max_output_points
                     fieldline_length = s_out
+                    terminated = .true.
                     exit tracing
                 end if
 
@@ -253,6 +310,42 @@ subroutine trace(x_initial, y_initial, z_initial, &
 
     end do tracing
 
+    ! ****************** Extend straight down to the bottom ******************
+
+    if (.not. terminated) then
+
+        n_extension_points = floor((z_max - z_out(n_output_points))/ds_out)
+
+        if (n_output_points + n_extension_points > max_output_points) then
+            n_extension_points = max_output_points - n_output_points
+        end if
+
+        do n = n_output_points + 1, n_output_points + n_extension_points
+
+            x_out(n) = x_out(n_output_points)
+            y_out(n) = y_out(n_output_points)
+            z_out(n) = z_out(n-1) + ds_out
+
+            if (zm(z_idx_out+1) <= z_out(n)) then
+                do
+                    z_idx_out = z_idx_out + 1
+                    if (zm(z_idx_out+1) > z_out(n)) exit
+                end do
+            end if
+
+            call compute_aux_output(x_out(n), y_out(n), z_out(n),    &
+                                    x_idx_out, y_idx_out, z_idx_out, &
+                                    1.0,                             &
+                                    aux_out(n, :),                   &
+                                    decoupled)
+
+        end do
+
+        n_output_points = n_output_points + n_extension_points
+        fieldline_length = fieldline_length + n_extension_points*ds_out
+
+    end if
+
     ! ************************* Resize output arrays *************************
 
     if (n_output_points < max_output_points) then
@@ -262,17 +355,17 @@ subroutine trace(x_initial, y_initial, z_initial, &
         out_temp = x_out(1:n_output_points)
         deallocate(x_out)
         allocate(x_out(n_output_points))
-        x_out = out_temp
+        x_out = u_l*out_temp
 
         out_temp = y_out(1:n_output_points)
         deallocate(y_out)
         allocate(y_out(n_output_points))
-        y_out = out_temp
+        y_out = u_l*out_temp
 
         out_temp = z_out(1:n_output_points)
         deallocate(z_out)
         allocate(z_out(n_output_points))
-        z_out = out_temp
+        z_out = u_l*out_temp
 
         deallocate(out_temp)
 

@@ -72,13 +72,13 @@ function poly_interpolate_2d(xsb, xeb,                 &
     ! ********************* Validate interpolation point *********************
 
     if (x < x_interp(1) .or. x > x_interp(n_interp)) then
-        write(*, '(A, A, G0.3, A, G0.3, A, G0.3, A)') &
+        write(*, '(A, A, G0.6, A, G0.6, A, G0.6, A)') &
             'Warning in poly_interpolate: x outside interpolation range ', &
             '(x = ', x, ', range = [', x_interp(1), ', ', x_interp(n_interp), '])'
     end if
 
     if (y < y_interp(1) .or. y > y_interp(n_interp)) then
-        write(*, '(A, A, G0.3, A, G0.3, A, G0.3, A)') &
+        write(*, '(A, A, G0.6, A, G0.6, A, G0.6, A)') &
             'Warning in poly_interpolate: y outside interpolation range ', &
             '(y = ', y, ', range = [', y_interp(1), ', ', y_interp(n_interp), '])'
     end if

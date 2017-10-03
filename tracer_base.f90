@@ -25,6 +25,7 @@ subroutine initialize_tracer(x_initial, y_initial, z_initial, &
     use tracer_params_mod, only : direction,             &
                                   interp_order,          &
                                   interp_bias,           &
+                                  s_initial,             &
                                   ds_initial,            &
                                   error_initial,         &
                                   n_interp,              &
@@ -75,7 +76,7 @@ subroutine initialize_tracer(x_initial, y_initial, z_initial, &
 
     ! ************************* Initialize position **************************
 
-    s_old = 0.0
+    s_old = s_initial
 
     x_old = x_initial
     y_old = y_initial
@@ -84,13 +85,13 @@ subroutine initialize_tracer(x_initial, y_initial, z_initial, &
     ! ************************** Find start indices **************************
 
     minloc_arr = minloc(xm(xs:xe) - x_old, mask=(xm(xs:xe) > x_old))
-    x_idx_old = minloc_arr(1) - 1
+    x_idx_old = xs + minloc_arr(1) - 2
 
     minloc_arr = minloc(ym(ys:ye) - y_old, mask=(ym(ys:ye) > y_old))
-    y_idx_old = minloc_arr(1) - 1
+    y_idx_old = ys + minloc_arr(1) - 2
 
     minloc_arr = minloc(zm(zs:ze) - z_old, mask=(zm(zs:ze) > z_old))
-    z_idx_old = minloc_arr(1) - 1
+    z_idx_old = zs + minloc_arr(1) - 2
 
     ! ************************ Find initial direction ************************
 
@@ -311,6 +312,119 @@ subroutine update_position_indices(x, y, z, &
 end subroutine update_position_indices
 
 
+
+subroutine update_position_data(x, y, z,             &
+                                x_idx, y_idx, z_idx, &
+                                terminated,          &
+                                terminated_here)
+
+    use tracer_params_mod, only : x_min, x_max, x_range,  &
+                                  y_min, y_max, y_range,  &
+                                  z_min, z_max, z_range
+
+    use mesh_mod, only : xs, xe,     &
+                         ys, ye,     &
+                         zs, ze,     &
+                         xm, ym, zm, &
+                         periodic_x, periodic_y, periodic_z
+
+    real(SP), intent(inout) :: x, y, z
+    integer,  intent(inout) :: x_idx, y_idx, z_idx
+    logical,  intent(inout) :: terminated
+    logical,  intent(out)   :: terminated_here
+
+    if (.not. periodic_x .and. (x < x_min .or. x >= x_max) .or. &
+        .not. periodic_y .and. (y < y_min .or. y >= y_max) .or. &
+        .not. periodic_z .and. (z < z_min .or. z >= z_max)) then
+
+        terminated = .true.
+        terminated_here = .true.
+
+    else
+
+        terminated_here = .false.
+
+    end if
+
+    if (.not. terminated) then
+
+        if (periodic_x) then
+
+            if (x < x_min) then
+                x = x_min + modulo(x - x_min,  x_range)
+                x_idx = xe - 1
+            else if (x >= x_max) then
+                x = x_min + modulo(x - x_min,  x_range)
+                x_idx = xs
+            end if
+
+        end if
+
+        if (periodic_y) then
+
+            if (y < y_min) then
+                y = y_min + modulo(y - y_min,  y_range)
+                y_idx = ye - 1
+            else if (y >= y_max) then
+                y = y_min + modulo(y - y_min,  y_range)
+                y_idx = ys
+            end if
+
+        end if
+
+        if (periodic_z) then
+
+            if (z < z_min) then
+                z = z_min + modulo(z - z_min,  z_range)
+                z_idx = ze - 1
+            else if (z >= z_max) then
+                z = z_min + modulo(z - z_min,  z_range)
+                z_idx = zs
+            end if
+
+        end if
+
+        if (xm(x_idx+1) <= x) then
+            do
+                x_idx = x_idx + 1
+                if (xm(x_idx+1) > x) exit
+            end do
+        else if (xm(x_idx) > x) then
+            do
+                x_idx = x_idx - 1
+                if (xm(x_idx) <= x) exit
+            end do
+        end if
+
+        if (ym(y_idx+1) <= y) then
+            do
+                y_idx = y_idx + 1
+                if (ym(y_idx+1) > y) exit
+            end do
+        else if (ym(y_idx) > y) then
+            do
+                y_idx = y_idx - 1
+                if (ym(y_idx) <= y) exit
+            end do
+        end if
+
+        if (zm(z_idx+1) <= z) then
+            do
+                z_idx = z_idx + 1
+                if (zm(z_idx+1) > z) exit
+            end do
+        else if (zm(z_idx) > z) then
+            do
+                z_idx = z_idx - 1
+                if (zm(z_idx) <= z) exit
+            end do
+        end if
+
+    end if
+
+end subroutine update_position_data
+
+
 subroutine interpolate_field(x_idx, y_idx, z_idx, &
                              x, y, z,             &
                              Bx, By, Bz)
@@ -369,16 +483,20 @@ end subroutine interpolate_field
 
 subroutine compute_aux_output(x_out, y_out, z_out,             &
                               x_idx_out, y_idx_out, z_idx_out, &
+                              z_weight,                        &
                               aux_out,                         &
-                              terminate)
+                              decoupled)
 
-    use tracer_params_mod, only : n_aux, aux_names
+    use tracer_params_mod, only : slope_correction, &
+                                  n_aux, &
+                                  aux_names
 
     real(SP), intent(in)  :: x_out, y_out, z_out
     integer,  intent(in)  :: x_idx_out, y_idx_out, z_idx_out
+    real(SP), intent(in)  :: z_weight
 
-    real(SP), intent(out) :: aux_out(n_aux)
-    logical,  intent(out) :: terminate
+    real(SP), intent(out)   :: aux_out(n_aux)
+    logical,  intent(inout) :: decoupled
 
     integer :: i
 
@@ -389,6 +507,9 @@ subroutine compute_aux_output(x_out, y_out, z_out,             &
             case ('r')
                 aux_out(i) = get_density(x_out, y_out, z_out, &
                                          x_idx_out, y_idx_out, z_idx_out)
+            case ('r_eff')
+                aux_out(i) = get_density(x_out, y_out, z_out, &
+                                         x_idx_out, y_idx_out, z_idx_out)*(1 + slope_correction*z_weight)
             case ('e')
                 aux_out(i) = get_internal_energy(x_out, y_out, z_out, &
                                                  x_idx_out, y_idx_out, z_idx_out)
@@ -401,12 +522,13 @@ subroutine compute_aux_output(x_out, y_out, z_out,             &
             case ('beta')
                 aux_out(i) = get_plasma_beta(x_out, y_out, z_out, &
                                              x_idx_out, y_idx_out, z_idx_out)
+                if (.not. decoupled) then
+                    decoupled = evaluate_decoupling_condition(z_out, aux_out(i))
+                end if
 
         end select
 
     end do
-
-    terminate = .false.!evaluate_stopping_condition(beta)
 
 end subroutine compute_aux_output
 
@@ -514,6 +636,8 @@ function get_gas_pressure(x_out, y_out, z_out, &
     minloc_arr = minloc(ln_rm_cgs - ln_r_cgs, mask=(ln_rm_cgs > ln_r_cgs))
     r_idx = minloc_arr(1) - 1
 
+    if (ee_idx + start_offset_eos < 1) ee_idx = 1 - start_offset_eos
+
     ln_Pg_cgs = poly_interpolate_2d(1, n_eos_bins_ee,          &
                                     1, n_eos_bins_r,           &
                                     ln_eem_cgs, ln_rm_cgs,     &
@@ -573,13 +697,16 @@ function get_plasma_beta(x_out, y_out, z_out, &
 end function get_plasma_beta
 
 
-function evaluate_stopping_condition(beta) result(terminate)
+function evaluate_decoupling_condition(z, beta) result(decouple)
 
-    real(SP), intent(in) :: beta
-    logical              :: terminate
+    use tracer_params_mod, only : decoupling_z, &
+                                  decoupling_beta
 
-    terminate = (beta > 1.0)
+    real(SP), intent(in) :: z, beta
+    logical              :: decouple
 
-end function evaluate_stopping_condition
+    decouple = (z > decoupling_z .and. beta > decoupling_beta)
+
+end function evaluate_decoupling_condition
 
 end module tracer_base_mod

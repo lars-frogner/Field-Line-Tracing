@@ -14,12 +14,17 @@ use tracer_params_mod, only : direction,              &
                               safety_factor,          &
                               scale_min,              &
                               scale_max,              &
+                              decoupling_z,           &
+                              decoupling_beta,        &
+                              decoupling_rate,        &
+                              slope_correction,       &
                               max_output_points,      &
                               n_aux,                  &
                               aux_names
 
 use mesh_mod, only : initialize_mesh, &
                      free_mesh,       &
+                     u_l,             &
                      xs, xe,          &
                      ys, ye,          &
                      zs, ze,          &
@@ -36,6 +41,7 @@ integer               :: n_output_points
 real(SP), allocatable :: x_out(:), y_out(:), z_out(:)
 real(SP), allocatable :: aux_out(:, :)
 real(SP)              :: fieldline_length
+integer               :: decoupling_index
 
 real(SP), allocatable :: x_initials(:), y_initials(:), z_initials(:)
 
@@ -51,7 +57,7 @@ integer(8) :: end_count
 integer(8) :: count_rate
 real(DP)   :: elapsed_time
 
-write(*, '(A/)') '*************************** Fieldline tracer ***************************'
+write(*, '(A/)') '*************************** test_tracer.f90 ****************************'
 write(*, '(A)') 'Parameters:'
 
 n_args = command_argument_count()
@@ -114,6 +120,22 @@ read(command_arg, '(G23.0)') scale_max
 write(*, '(A, G0.3)') 'scale_max = ', scale_max
 i = i + 1
 call get_command_argument(i, command_arg)
+read(command_arg, '(G23.0)') decoupling_z
+write(*, '(A, G0.3)') 'decoupling_z = ', decoupling_z
+i = i + 1
+call get_command_argument(i, command_arg)
+read(command_arg, '(G23.0)') decoupling_beta
+write(*, '(A, G0.3)') 'decoupling_beta = ', decoupling_beta
+i = i + 1
+call get_command_argument(i, command_arg)
+read(command_arg, '(G23.0)') decoupling_rate
+write(*, '(A, G0.3)') 'decoupling_rate = ', decoupling_rate
+i = i + 1
+call get_command_argument(i, command_arg)
+read(command_arg, '(G23.0)') slope_correction
+write(*, '(A, G0.3)') 'slope_correction = ', slope_correction
+i = i + 1
+call get_command_argument(i, command_arg)
 read(command_arg, '(I23)')   max_output_points
 write(*, '(A, I0)') 'max_output_points = ', max_output_points
 i = i + 1
@@ -150,14 +172,14 @@ do i = 1, n_initials
 
 end do
 
-call initialize_mesh('/home/lars/Data/en024031_emer3.0med_437.idl')
+call initialize_mesh('/mn/stornext/d7/larsfrog/en024031_emer3.0med/en024031_emer3.0med_438.idl')
 
 open(newunit=unit, file='fieldlines.dat', status='replace', action='write')
 
 write(unit, *) xs, xe, ys, ye, zs, ze, n_output_points
-write(unit, *) xm(xs:xe)
-write(unit, *) ym(ys:ye)
-write(unit, *) zm(zs:ze)
+write(unit, *) u_l*xm(xs:xe)
+write(unit, *) u_l*ym(ys:ye)
+write(unit, *) u_l*zm(zs:ze)
 
 elapsed_time = 0.0
 
@@ -175,12 +197,14 @@ if (directions == 0.0) then
                    n_output_points,                             &
                    x_out, y_out, z_out,                         &
                    aux_out,                                     &
-                   fieldline_length)
+                   fieldline_length,                            &
+                   decoupling_index)
 
         call system_clock(end_count)
         elapsed_time = elapsed_time + (end_count - start_count)/real(count_rate, DP)
 
         write(unit, *) fieldline_length
+        write(unit, *) decoupling_index
         write(unit, *) x_out
         write(unit, *) y_out
         write(unit, *) z_out
@@ -196,12 +220,14 @@ if (directions == 0.0) then
                    n_output_points,                             &
                    x_out, y_out, z_out,                         &
                    aux_out,                                     &
-                   fieldline_length)
+                   fieldline_length,                            &
+                   decoupling_index)
 
         call system_clock(end_count)
         elapsed_time = elapsed_time + (end_count - start_count)/real(count_rate, DP)
 
         write(unit, *) fieldline_length
+        write(unit, *) decoupling_index
         write(unit, *) x_out
         write(unit, *) y_out
         write(unit, *) z_out
@@ -225,12 +251,14 @@ else
                    n_output_points,                             &
                    x_out, y_out, z_out,                         &
                    aux_out,                                     &
-                   fieldline_length)
+                   fieldline_length,                            &
+                   decoupling_index)
 
         call system_clock(end_count)
         elapsed_time = elapsed_time + (end_count - start_count)/real(count_rate, DP)
 
         write(unit, *) fieldline_length
+        write(unit, *) decoupling_index
         write(unit, *) x_out
         write(unit, *) y_out
         write(unit, *) z_out
@@ -241,6 +269,8 @@ else
     end do
 
 end if
+
+write(unit, *) elapsed_time/real(n_initials)
 
 close(unit)
 
@@ -256,7 +286,5 @@ deallocate(y_initials)
 deallocate(z_initials)
 
 deallocate(aux_names)
-
-write(*, '(/A, G0.3, A/)') 'Average elapsed time: ', elapsed_time/real(n_initials), ' s'
 
 end program test_tracer

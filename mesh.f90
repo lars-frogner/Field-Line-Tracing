@@ -53,10 +53,13 @@ subroutine initialize_mesh(idl_file_path)
     end if
 
     call read_params(path, idl_file, eos_file, mesh_file, snap_file)
+    call read_eos_table(trim(path)//trim(eos_file))
     call read_meshgrid(trim(path)//trim(mesh_file))
     call read_snap(trim(path)//trim(snap_file), 'bx')
     call read_snap(trim(path)//trim(snap_file), 'by')
     call read_snap(trim(path)//trim(snap_file), 'bz')
+    call read_snap(trim(path)//trim(snap_file), 'rm')
+    call read_snap(trim(path)//trim(snap_file), 'em')
     call set_boundaries()
 
     mesh_initialized = .true.

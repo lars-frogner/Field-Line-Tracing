@@ -67,11 +67,10 @@ end subroutine initialize_stepper
 subroutine step(x_old, y_old, z_old,                         &
                 x_idx_old, y_idx_old, z_idx_old,             &
                 ds_current,                                  &
+                B_weight, z_weight,                          &
                 x_current, y_current, z_current,             &
                 x_idx_current, y_idx_current, z_idx_current, &
                 terminate)
-
-    use tracer_params_mod, only : direction
 
     use tracer_base_mod, only : apply_boundary_conditions, &
                                 update_position_indices,   &
@@ -80,6 +79,7 @@ subroutine step(x_old, y_old, z_old,                         &
     real(SP), intent(in) :: x_old, y_old, z_old
     integer,  intent(in) :: x_idx_old, y_idx_old, z_idx_old
     real(SP), intent(in) :: ds_current
+    real(SP), intent(in) :: B_weight, z_weight
 
     real(SP), intent(out) :: x_current, y_current, z_current
     integer,  intent(out) :: x_idx_current, y_idx_current, z_idx_current
@@ -115,7 +115,12 @@ subroutine step(x_old, y_old, z_old,                         &
 
     ! ******************************** Step 2 ********************************
 
-    norm = direction/sqrt(Bx*Bx + By*By + Bz*Bz)
+    Bx = B_weight*Bx
+    By = B_weight*By
+    Bz = B_weight*Bz + z_weight
+
+    norm = 1.0/sqrt(Bx*Bx + By*By + Bz*Bz)
+
     dx_ds_current(2) = Bx*norm
     dy_ds_current(2) = By*norm
     dz_ds_current(2) = Bz*norm
@@ -137,7 +142,12 @@ subroutine step(x_old, y_old, z_old,                         &
 
     ! ******************************** Step 3 ********************************
 
-    norm = direction/sqrt(Bx*Bx + By*By + Bz*Bz)
+    Bx = B_weight*Bx
+    By = B_weight*By
+    Bz = B_weight*Bz + z_weight
+
+    norm = 1.0/sqrt(Bx*Bx + By*By + Bz*Bz)
+
     dx_ds_current(3) = Bx*norm
     dy_ds_current(3) = By*norm
     dz_ds_current(3) = Bz*norm
@@ -174,7 +184,12 @@ subroutine step(x_old, y_old, z_old,                         &
 
     ! ************************** Prepare next step ***************************
 
-    norm = direction/sqrt(Bx*Bx + By*By + Bz*Bz)
+    Bx = B_weight*Bx
+    By = B_weight*By
+    Bz = B_weight*Bz + z_weight
+
+    norm = 1.0/sqrt(Bx*Bx + By*By + Bz*Bz)
+
     dx_ds_current(4) = Bx*norm
     dy_ds_current(4) = By*norm
     dz_ds_current(4) = Bz*norm

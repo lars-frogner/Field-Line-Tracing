@@ -19,6 +19,8 @@ real(SP), public :: abs_tolerance     = 1.0e-6
 real(SP), public :: rel_tolerance     = 1.0e-6
 
 real(SP), public :: ds_out            = 1.0e-3
+
+real(SP), public :: s_initial         = 0.0
 real(SP), public :: ds_initial        = 1.0e-6
 real(SP), public :: error_initial     = 1.0e-4
 
@@ -27,6 +29,11 @@ real(SP), public :: beta              = 0.0
 real(SP), public :: safety_factor     = 0.9
 real(SP), public :: scale_min         = 0.2
 real(SP), public :: scale_max         = 10.0
+
+real(SP), public :: decoupling_z      = -1.3
+real(SP), public :: decoupling_beta   = 5.0
+real(SP), public :: decoupling_rate   = 1.0
+real(SP), public :: slope_correction  = 1.0
 
 integer,  public :: max_output_points = 5000
 
