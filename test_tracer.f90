@@ -172,7 +172,7 @@ do i = 1, n_initials
 
 end do
 
-call initialize_mesh('/mn/stornext/d7/larsfrog/en024031_emer3.0med/en024031_emer3.0med_438.idl')
+call initialize_mesh('/home/lars/Data/en024031_emer3.0med/en024031_emer3.0med_438.idl')
 
 open(newunit=unit, file='fieldlines.dat', status='replace', action='write')
 

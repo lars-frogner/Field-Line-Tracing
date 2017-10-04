@@ -105,8 +105,8 @@ class fieldline_analyser:
                                'z': r'$z$',
                                's': r'$s$',
                                'sh': r'$s_\mathrm{h}$',
-                               'r': r'$\rho_\mathrm{eff}$',
-                               'r_eff': r'$\rho$',
+                               'r': r'$\rho$',
+                               'r_eff': r'$\rho_\mathrm{eff}$',
                                'e': r'$e$',
                                'Pg': r'$P_g$',
                                'PB': r'$P_B$',
@@ -205,9 +205,9 @@ class fieldline_analyser:
         print('Computing fieldlines...')
 
         if self.recompile:
-            subprocess.check_call(['make', 'test_tracer', 'ARGS=\"clean\"'])
+            subprocess.check_call(['make', 'clean'])
 
-        subprocess.check_call(['make', 'test_tracer', 'ARGS=\"{}\"'.format(self.compile_mode)])
+        subprocess.check_call(['make', self.compile_mode])
 
         start_coordinates = [0.0]*3*self.n_fieldlines
         start_coordinates[::3] = self.x_initials
@@ -511,9 +511,10 @@ class fieldline_analyser:
     def plot_quantities(self,
                         x_quantity='s',
                         y_quantity='z',
-                        linewidth=0.25,
                         x_limits=None,
                         y_limits=None,
+                        index_limits=None,
+                        plot_kwargs={},
                         x_log=False,
                         y_log=False,
                         reverse_x=False,
@@ -521,6 +522,8 @@ class fieldline_analyser:
                         extra_patch=None,
                         extra_points=None,
                         extra_plot=None,
+                        title=None,
+                        aspect=None,
                         fieldline_set='full',
                         savename=None):
 
@@ -533,22 +536,45 @@ class fieldline_analyser:
         else:
             raise ValueError('Invalid fieldline set {}'.format(fieldline_set))
 
-        fig = plt.figure()
+        if not 'zorder' in plot_kwargs:
+            plot_kwargs['zorder'] = 0
+        if not 'linewidth' in plot_kwargs:
+            plot_kwargs['linewidth'] = 0.25
+
+        if aspect is None:
+            fig = plt.figure()
+        else:
+            fig = plt.figure(figsize=plt.figaspect(aspect))
+
         ax = fig.add_subplot(111)
 
-        for i in range(len(fieldlines)):
-
-            if len(fieldlines[i][x_quantity]) > 0 and len(fieldlines[i][y_quantity]) > 0:
-                ax.plot(fieldlines[i][x_quantity], fieldlines[i][y_quantity], linewidth=linewidth, zorder=0)
+        if index_limits is None:
+            for i in range(len(fieldlines)):
+                if len(fieldlines[i][x_quantity]) > 0 and len(fieldlines[i][y_quantity]) > 0:
+                    ax.plot(fieldlines[i][x_quantity],
+                            fieldlines[i][y_quantity],
+                            **plot_kwargs)
+        elif len(index_limits) == 1:
+            for i in range(len(fieldlines)):
+                if len(fieldlines[i][x_quantity]) > 0 and len(fieldlines[i][y_quantity]) > 0:
+                    ax.plot(fieldlines[i][x_quantity][index_limits[0]],
+                            fieldlines[i][y_quantity][index_limits[0]],
+                            **plot_kwargs)
+        elif len(index_limits) == 2:
+            for i in range(len(fieldlines)):
+                if len(fieldlines[i][x_quantity]) > 0 and len(fieldlines[i][y_quantity]) > 0:
+                    ax.plot(fieldlines[i][x_quantity][index_limits[0]:index_limits[1]],
+                            fieldlines[i][y_quantity][index_limits[0]:index_limits[1]],
+                            **plot_kwargs)
 
         if extra_patch is not None:
             ax.add_patch(extra_patch)
 
         if extra_points is not None:
-            ax.scatter(extra_points[0], extra_points[1], s=extra_points[2], c=extra_points[3])
+            ax.scatter(extra_points[0], extra_points[1], **extra_points[2])
 
         if extra_plot is not None:
-            ax.plot(*extra_plot)
+            ax.plot(extra_plot[0], extra_plot[1], **extra_plot[2])
 
         if x_limits is not None:
             ax.set_xlim(*x_limits)
@@ -567,12 +593,16 @@ class fieldline_analyser:
 
         ax.set_xlabel(r'{}{}'.format(self.quantity_names[x_quantity], r'' if len(self.quantity_units[x_quantity]) == 0 else r'$\;[${}$]$'.format(self.quantity_units[x_quantity])))
         ax.set_ylabel(r'{}{}'.format(self.quantity_names[y_quantity], r'' if len(self.quantity_units[y_quantity]) == 0 else r'$\;[${}$]$'.format(self.quantity_units[y_quantity])))
-        ax.set_title(r'{} vs. {} ({})'.format(self.quantity_descriptions[y_quantity][0].upper() + self.quantity_descriptions[y_quantity][1:], self.quantity_descriptions[x_quantity], fieldline_set))
+
+        if title is None:
+            ax.set_title(r'{} vs. {} ({})'.format(self.quantity_descriptions[y_quantity][0].upper() + self.quantity_descriptions[y_quantity][1:], self.quantity_descriptions[x_quantity], fieldline_set))
+        else:
+            ax.set_title(title)
 
         plt.tight_layout()
 
         if savename:
-            fig.savefig('{}.png'.format(savename))
+            fig.savefig('{}.pdf'.format(savename))
 
 
 def perform_fieldline_analysis(n_fieldlines=1000,
@@ -621,6 +651,8 @@ def perform_fieldline_analysis(n_fieldlines=1000,
     print('Average elapsed time (decoupled) = {:g} s'.format(an_d.average_elapsed_time))
 
     z_limits = (-1.5e9, 3e8)
+    z_reduced_limits = (-2e8, z_limits[1])
+    r_limits=(1e-15, 1e-5)
     beta_limits = (1e-4, 5e5)
     sh_limits = (0, 6e9)
     m_limits = (1e-7, 5e4)
@@ -647,16 +679,49 @@ def perform_fieldline_analysis(n_fieldlines=1000,
                          y_limits=z_limits,
                          x_log=True,
                          reverse_y=True,
-                         extra_patch=patches.Rectangle((an_e.decoupling_beta,
-                                                        an_e.u_l*an_e.decoupling_z),
-                                                       beta_limits[1] - an_e.decoupling_beta,
-                                                       z_limits[1] - an_e.u_l*an_e.decoupling_z,
-                                                       edgecolor='crimson',
-                                                       facecolor='crimson',
-                                                       linewidth=1,
-                                                       alpha=0.3),
+                         extra_plot=([an_e.decoupling_beta,
+                                      an_e.decoupling_beta,
+                                      beta_limits[1]],
+                                     [z_limits[1],
+                                      an_e.u_l*an_e.decoupling_z,
+                                      an_e.u_l*an_e.decoupling_z],
+                                     {'color': 'navy',
+                                      'linewidth': 1}),
+                         title=r'Plasma $\beta$ along field lines',
                          fieldline_set='full',
                          savename='beta_z_full')
+
+    # Plot density
+
+    an_e.plot_quantities(x_quantity='r',
+                         y_quantity='z',
+                         x_limits=r_limits,
+                         y_limits=z_limits,
+                         x_log=True,
+                         reverse_y=True,
+                         extra_plot=(r_limits,
+                                     [an_e.u_l*an_e.decoupling_z]*2,
+                                     {'color': 'navy',
+                                      'linewidth': 1}),
+                         title='Mass density',
+                         fieldline_set='full',
+                         savename='r_z_full')
+
+    an_e.plot_quantities(x_quantity='r',
+                         y_quantity='z',
+                         x_limits=(9e-11, r_limits[1]),
+                         y_limits=z_reduced_limits,
+                         index_limits=[-1],
+                         plot_kwargs={'marker': '.'},
+                         x_log=True,
+                         reverse_y=True,
+                         extra_plot=(r_limits,
+                                     [an_e.u_l*an_e.decoupling_z]*2,
+                                     {'color': 'navy',
+                                      'linewidth': 1}),
+                         title='Mass density at termination points',
+                         fieldline_set='truncated',
+                         savename='r_z_truncated')
 
     # Plot height profiles
 
@@ -665,6 +730,11 @@ def perform_fieldline_analysis(n_fieldlines=1000,
                          x_limits=sh_limits,
                          y_limits=z_limits,
                          reverse_y=True,
+                         extra_plot=(sh_limits,
+                                     [an_e.u_l*an_e.decoupling_z]*2,
+                                     {'color': 'navy',
+                                      'linewidth': 1}),
+                         title='Field line height profiles',
                          fieldline_set='full',
                          savename='sh_z_full_exact')
 
@@ -681,45 +751,61 @@ def perform_fieldline_analysis(n_fieldlines=1000,
     an_e.plot_quantities(x_quantity='m',
                          y_quantity='z',
                          x_limits=m_limits,
-                         y_limits=z_limits,
+                         y_limits=z_reduced_limits,
                          x_log=True,
                          reverse_y=True,
                          extra_points=([mean_truncation_m_decoupled,
                                         mean_truncation_m_eff_decoupled,
                                         mean_truncation_m_exact],
                                        [an_e.z_bottom]*3,
-                                       [point_size]*3,
-                                       ['crimson', 'navy', 'forestgreen']),
+                                       {'s': [point_size]*3,
+                                        'c': ['crimson', 'navy', 'forestgreen']}),
+                         extra_plot=(m_limits,
+                                     [an_e.u_l*an_e.decoupling_z]*2,
+                                     {'color': 'navy',
+                                      'linewidth': 1}),
+                         title='Column masses of full field lines',
+                         aspect=0.5,
                          fieldline_set='full',
                          savename='m_z_full_exact')
 
     an_d.plot_quantities(x_quantity='m',
                          y_quantity='z',
                          x_limits=m_limits,
-                         y_limits=z_limits,
+                         y_limits=z_reduced_limits,
                          x_log=True,
                          reverse_y=True,
                          extra_points=([mean_truncation_m_decoupled,
                                         mean_truncation_m_eff_decoupled,
                                         mean_truncation_m_exact],
                                        [an_d.z_bottom]*3,
-                                       [point_size]*3,
-                                       ['crimson', 'navy', 'forestgreen']),
+                                       {'s': [point_size]*3,
+                                        'c': ['crimson', 'navy', 'forestgreen']}),
+                         extra_plot=(m_limits,
+                                     [an_e.u_l*an_e.decoupling_z]*2,
+                                     {'color': 'navy',
+                                      'linewidth': 1}),
                          fieldline_set='full',
                          savename='m_z_full_decoupled')
 
     an_d.plot_quantities(x_quantity='m_eff',
                          y_quantity='z',
                          x_limits=m_limits,
-                         y_limits=z_limits,
+                         y_limits=z_reduced_limits,
                          x_log=True,
                          reverse_y=True,
                          extra_points=([mean_truncation_m_decoupled,
                                         mean_truncation_m_eff_decoupled,
                                         mean_truncation_m_exact],
                                        [an_d.z_bottom]*3,
-                                       [point_size]*3,
-                                       ['crimson', 'navy', 'forestgreen']),
+                                       {'s': [point_size]*3,
+                                        'c': ['crimson', 'navy', 'forestgreen']}),
+                         extra_plot=(m_limits,
+                                     [an_e.u_l*an_e.decoupling_z]*2,
+                                     {'color': 'navy',
+                                      'linewidth': 1}),
+                         title='Corrected column masses of extended field lines',
+                         aspect=0.5,
                          fieldline_set='full',
                          savename='m_eff_z_full_decoupled')
 
@@ -735,8 +821,8 @@ def perform_fieldline_analysis(n_fieldlines=1000,
                                         mean_truncation_m_eff_decoupled,
                                         mean_truncation_m_exact],
                                        [an_e.z_bottom]*3,
-                                       [point_size]*3,
-                                       ['crimson', 'navy', 'forestgreen']),
+                                       {'s': [point_size]*3,
+                                        'c': ['crimson', 'navy', 'forestgreen']}),
                          fieldline_set='truncations',
                          savename='m_z_truncations_exact')
 
@@ -750,8 +836,8 @@ def perform_fieldline_analysis(n_fieldlines=1000,
                                         mean_truncation_m_eff_decoupled,
                                         mean_truncation_m_exact],
                                        [an_d.z_bottom]*3,
-                                       [point_size]*3,
-                                       ['crimson', 'navy', 'forestgreen']),
+                                       {'s': [point_size]*3,
+                                        'c': ['crimson', 'navy', 'forestgreen']}),
                          fieldline_set='truncations',
                          savename='m_z_truncations_decoupled')
 
@@ -765,15 +851,15 @@ def perform_fieldline_analysis(n_fieldlines=1000,
                                         mean_truncation_m_eff_decoupled,
                                         mean_truncation_m_exact],
                                        [an_d.z_bottom]*3,
-                                       [point_size]*3,
-                                       ['crimson', 'navy', 'forestgreen']),
+                                       {'s': [point_size]*3,
+                                        'c': ['crimson', 'navy', 'forestgreen']}),
                          fieldline_set='truncations',
                          savename='m_eff_z_truncations_decoupled')
 
 
 if __name__ == '__main__':
 
-    perform_fieldline_analysis(n_fieldlines=10000,
+    perform_fieldline_analysis(n_fieldlines=300,
                                decoupling_z=-1.3,
                                decoupling_beta=5.0,
                                decoupling_rate=1.0,
