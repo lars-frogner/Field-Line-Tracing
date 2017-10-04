@@ -5,11 +5,10 @@ private
 
 integer, parameter :: SP = kind(0.0)
 
-public :: initialize_tracer,         &
-          adjust_stepsize,           &
-          apply_boundary_conditions, &
-          update_position_indices,   &
-          interpolate_field,         &
+public :: initialize_tracer,    &
+          adjust_stepsize,      &
+          update_position_data, &
+          interpolate_field,    &
           compute_aux_output
 
 contains
@@ -170,149 +169,6 @@ subroutine adjust_stepsize(ds_current,    &
 end subroutine adjust_stepsize
 
 
-subroutine apply_boundary_conditions(x, y, z,             &
-                                     x_idx, y_idx, z_idx, &
-                                     terminate)
-
-    use tracer_params_mod, only : x_min, x_max, x_range,  &
-                                  y_min, y_max, y_range,  &
-                                  z_min, z_max, z_range
-
-    use mesh_mod, only : xs, xe, &
-                         ys, ye, &
-                         zs, ze, &
-                         periodic_x, periodic_y, periodic_z
-
-    real(SP), intent(inout) :: x, y, z
-    integer,  intent(inout) :: x_idx, y_idx, z_idx
-
-    logical,  intent(out) :: terminate
-
-    terminate = .false.
-
-    if (periodic_x) then
-
-        if (x < x_min) then
-            x = x_min + modulo(x - x_min,  x_range)
-            x_idx = xe - 1
-        else if (x >= x_max) then
-            x = x_min + modulo(x - x_min,  x_range)
-            x_idx = xs
-        end if
-
-    else if (x < x_min) then
-
-        x = x_min
-        x_idx = xs
-        terminate = .true.
-
-    else if (x >= x_max) then
-
-        x = x_max - 1.0e-6
-        x_idx = xe - 1
-        terminate = .true.
-
-    end if
-
-    if (periodic_y) then
-
-        if (y < y_min) then
-            y = y_min + modulo(y - y_min,  y_range)
-            y_idx = ye - 1
-        else if (y >= y_max) then
-            y = y_min + modulo(y - y_min,  y_range)
-            y_idx = ys
-        end if
-
-    else if (y < y_min) then
-
-        y = y_min
-        y_idx = ys
-        terminate = .true.
-
-    else if (y >= y_max) then
-
-        y = y_max - 1.0e-6
-        y_idx = ye - 1
-        terminate = .true.
-
-    end if
-
-    if (periodic_z) then
-
-        if (z < z_min) then
-            z = z_min + modulo(z - z_min,  z_range)
-            z_idx = ze - 1
-        else if (z >= z_max) then
-            z = z_min + modulo(z - z_min,  z_range)
-            z_idx = zs
-        end if
-
-    else if (z < z_min) then
-
-        z = z_min
-        z_idx = zs
-        terminate = .true.
-
-    else if (z >= z_max) then
-
-        z = z_max - 1.0e-6
-        z_idx = ze - 1
-        terminate = .true.
-
-    end if
-
-end subroutine apply_boundary_conditions
-
-
-subroutine update_position_indices(x, y, z, &
-                                   x_idx, y_idx, z_idx)
-
-    use mesh_mod, only : xm, ym, zm
-
-    real(SP), intent(in)    :: x, y, z
-    integer,  intent(inout) :: x_idx, y_idx, z_idx
-
-    if (xm(x_idx+1) <= x) then
-        do
-            x_idx = x_idx + 1
-            if (xm(x_idx+1) > x) exit
-        end do
-    else if (xm(x_idx) > x) then
-        do
-            x_idx = x_idx - 1
-            if (xm(x_idx) <= x) exit
-        end do
-    end if
-
-    if (ym(y_idx+1) <= y) then
-        do
-            y_idx = y_idx + 1
-            if (ym(y_idx+1) > y) exit
-        end do
-    else if (ym(y_idx) > y) then
-        do
-            y_idx = y_idx - 1
-            if (ym(y_idx) <= y) exit
-        end do
-    end if
-
-    if (zm(z_idx+1) <= z) then
-        do
-            z_idx = z_idx + 1
-            if (zm(z_idx+1) > z) exit
-        end do
-    else if (zm(z_idx) > z) then
-        do
-            z_idx = z_idx - 1
-            if (zm(z_idx) <= z) exit
-        end do
-    end if
-
-end subroutine update_position_indices
-
-
-
 subroutine update_position_data(x, y, z,             &
                                 x_idx, y_idx, z_idx, &
                                 terminated,          &
@@ -333,9 +189,9 @@ subroutine update_position_data(x, y, z,             &
     logical,  intent(inout) :: terminated
     logical,  intent(out)   :: terminated_here
 
-    if (.not. periodic_x .and. (x < x_min .or. x >= x_max) .or. &
-        .not. periodic_y .and. (y < y_min .or. y >= y_max) .or. &
-        .not. periodic_z .and. (z < z_min .or. z >= z_max)) then
+    if ((.not. periodic_x .and. (x < x_min .or. x >= x_max)) .or. &
+        (.not. periodic_y .and. (y < y_min .or. y >= y_max)) .or. &
+        (.not. periodic_z .and. (z < z_min .or. z >= z_max))) then
 
         terminated = .true.
         terminated_here = .true.

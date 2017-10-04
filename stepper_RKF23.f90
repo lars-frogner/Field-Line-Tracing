@@ -70,10 +70,9 @@ subroutine step(x_old, y_old, z_old,                         &
                 B_weight, z_weight,                          &
                 x_current, y_current, z_current,             &
                 x_idx_current, y_idx_current, z_idx_current, &
-                terminate)
+                terminated_here)
 
-    use tracer_base_mod, only : apply_boundary_conditions, &
-                                update_position_indices,   &
+    use tracer_base_mod, only : update_position_data,   &
                                 interpolate_field
 
     real(SP), intent(in) :: x_old, y_old, z_old
@@ -83,10 +82,13 @@ subroutine step(x_old, y_old, z_old,                         &
 
     real(SP), intent(out) :: x_current, y_current, z_current
     integer,  intent(out) :: x_idx_current, y_idx_current, z_idx_current
-    logical,  intent(out) :: terminate
+    logical,  intent(out) :: terminated_here
 
     real(SP) :: norm
     real(SP) :: Bx, By, Bz
+    logical  :: terminated
+
+    terminated = .false.
 
     x_idx_current = x_idx_old
     y_idx_current = y_idx_old
@@ -102,12 +104,10 @@ subroutine step(x_old, y_old, z_old,                         &
     y_current = y_old + ds_current*a2(1)*dy_ds_current(1)
     z_current = z_old + ds_current*a2(1)*dz_ds_current(1)
 
-    call apply_boundary_conditions(x_current, y_current, z_current,             &
-                                   x_idx_current, y_idx_current, z_idx_current, &
-                                   terminate)
-
-    call update_position_indices(x_current, y_current, z_current, &
-                                 x_idx_current, y_idx_current, z_idx_current)
+    call update_position_data(x_current, y_current, z_current,             &
+                              x_idx_current, y_idx_current, z_idx_current, &
+                              terminated,                                  &
+                              terminated_here)
 
     call interpolate_field(x_idx_current, y_idx_current, z_idx_current, &
                            x_current, y_current, z_current,             &
@@ -129,12 +129,10 @@ subroutine step(x_old, y_old, z_old,                         &
     y_current = y_old + ds_current*(a3(2)*dy_ds_current(2))
     z_current = z_old + ds_current*(a3(2)*dz_ds_current(2))
 
-    call apply_boundary_conditions(x_current, y_current, z_current,             &
-                                   x_idx_current, y_idx_current, z_idx_current, &
-                                   terminate)
-
-    call update_position_indices(x_current, y_current, z_current, &
-                                 x_idx_current, y_idx_current, z_idx_current)
+    call update_position_data(x_current, y_current, z_current,             &
+                              x_idx_current, y_idx_current, z_idx_current, &
+                              terminated,                                  &
+                              terminated_here)
 
     call interpolate_field(x_idx_current, y_idx_current, z_idx_current, &
                            x_current, y_current, z_current,             &
@@ -168,15 +166,10 @@ subroutine step(x_old, y_old, z_old,                         &
     y_current = y_old + dy
     z_current = z_old + dz
 
-    ! Set actual ds_current that was used in the final step (might deviate from original ds_current)
-    !ds_current = sqrt(dx*dx + dy*dy)
-
-    call apply_boundary_conditions(x_current, y_current, z_current,             &
-                                   x_idx_current, y_idx_current, z_idx_current, &
-                                   terminate)
-
-    call update_position_indices(x_current, y_current, z_current, &
-                                 x_idx_current, y_idx_current, z_idx_current)
+    call update_position_data(x_current, y_current, z_current,             &
+                              x_idx_current, y_idx_current, z_idx_current, &
+                              terminated,                                  &
+                              terminated_here)
 
     call interpolate_field(x_idx_current, y_idx_current, z_idx_current, &
                            x_current, y_current, z_current,             &
@@ -286,8 +279,7 @@ subroutine get_interpolated_position(s_out,                           &
                                      x_out, y_out, z_out,             &
                                      x_idx_out, y_idx_out, z_idx_out)
 
-    use tracer_base_mod, only : apply_boundary_conditions, &
-                                update_position_indices
+    use tracer_base_mod, only : update_position_data
 
     real(SP), intent(in) :: s_out
     real(SP), intent(in) :: s_old
@@ -298,7 +290,9 @@ subroutine get_interpolated_position(s_out,                           &
     integer,  intent(out) :: x_idx_out, y_idx_out, z_idx_out
 
     real(SP) :: t, t_minus_one, t_times_t_minus_one, one_minus_two_t
-    logical  :: terminate
+    logical  :: terminated, terminated_here
+
+    terminated = .false.
 
     t = (s_out - s_old)/ds_current
     t_minus_one = t - 1.0
@@ -324,12 +318,10 @@ subroutine get_interpolated_position(s_out,                           &
     y_idx_out = y_idx_old
     z_idx_out = z_idx_old
 
-    call apply_boundary_conditions(x_out, y_out, z_out,             &
-                                   x_idx_out, y_idx_out, z_idx_out, &
-                                   terminate)
-
-    call update_position_indices(x_out, y_out, z_out, &
-                                 x_idx_out, y_idx_out, z_idx_out)
+    call update_position_data(x_out, y_out, z_out,             &
+                              x_idx_out, y_idx_out, z_idx_out, &
+                              terminated,                      &
+                              terminated_here)
 
 end subroutine get_interpolated_position
 
